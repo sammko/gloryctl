@@ -8,6 +8,15 @@ fn main() -> Result<()> {
 
     dbg!(dev.read_fw_version()?);
 
+    let conf_raw = dev.read_config_raw()?;
+
+    for x in conf_raw.chunks(16) {
+        for byte in x {
+            print!("{:02x} ", byte);
+        }
+        print!("\n");
+    }
+
     let conf = dev.read_config()?;
     dbg!(conf);
 
