@@ -252,3 +252,263 @@ for a simpler alternative in the future.
 assembling data from the defined data types back into the byte blobs the mouse
 expects. There is nothing particularly illuminating, the correct values are
 just placed in the right order into a byte array.
+
+
+### Example output
+
+This is what the parsed structure might look like:
+
+    [src/main.rs:21] conf = Config {
+        header: [
+            4,
+            17,
+            0,
+            0,
+            0,
+            0,
+            6,
+            0,
+            100,
+        ],
+        sensor_id: 6,
+        dpi_axes_independent: false,
+        polling_rate: Hz1000,
+        dpi_current_profile: 2,
+        dpi_profile_count: 3,
+        dpi_profiles: [
+            DpiProfile {
+                enabled: true,
+                value: Single(
+                    4,
+                ),
+                color: Color {
+                    r: 192,
+                    g: 0,
+                    b: 192,
+                },
+            },
+            DpiProfile {
+                enabled: false,
+                value: Single(
+                    5,
+                ),
+                color: Color {
+                    r: 255,
+                    g: 255,
+                    b: 255,
+                },
+            },
+            DpiProfile {
+                enabled: true,
+                value: Single(
+                    5,
+                ),
+                color: Color {
+                    r: 255,
+                    g: 0,
+                    b: 0,
+                },
+            },
+            DpiProfile {
+                enabled: true,
+                value: Single(
+                    5,
+                ),
+                color: Color {
+                    r: 0,
+                    g: 255,
+                    b: 0,
+                },
+            },
+            DpiProfile {
+                enabled: false,
+                value: Single(
+                    6,
+                ),
+                color: Color {
+                    r: 255,
+                    g: 0,
+                    b: 255,
+                },
+            },
+            DpiProfile {
+                enabled: false,
+                value: Single(
+                    6,
+                ),
+                color: Color {
+                    r: 255,
+                    g: 255,
+                    b: 255,
+                },
+            },
+            DpiProfile {
+                enabled: false,
+                value: Single(
+                    7,
+                ),
+                color: Color {
+                    r: 0,
+                    g: 0,
+                    b: 0,
+                },
+            },
+            DpiProfile {
+                enabled: false,
+                value: Single(
+                    7,
+                ),
+                color: Color {
+                    r: 0,
+                    g: 0,
+                    b: 0,
+                },
+            },
+        ],
+        rgb_current_effect: Off,
+        rgb_effect_parameters: EffectParameters {
+            glorious: Glorious {
+                speed: 1,
+                direction: 0,
+            },
+            single_color: SingleColor {
+                brightness: 4,
+                color: Color {
+                    r: 255,
+                    g: 0,
+                    b: 0,
+                },
+            },
+            breathing: Breathing {
+                speed: 2,
+                count: 3,
+                colors: [
+                    Color {
+                        r: 255,
+                        g: 0,
+                        b: 0,
+                    },
+                    Color {
+                        r: 0,
+                        g: 0,
+                        b: 255,
+                    },
+                    Color {
+                        r: 0,
+                        g: 255,
+                        b: 0,
+                    },
+                    Color {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                    },
+                    Color {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                    },
+                    Color {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                    },
+                    Color {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                    },
+                ],
+            },
+            tail: Tail {
+                speed: 2,
+                brightness: 4,
+            },
+            seamless_breathing: SeamlessBreathing {
+                speed: 2,
+            },
+            constant_rgb: ConstantRgb {
+                colors: [
+                    Color {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                    },
+                    Color {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                    },
+                    Color {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                    },
+                    Color {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                    },
+                    Color {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                    },
+                    Color {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                    },
+                ],
+            },
+            rave: Rave {
+                speed: 2,
+                brightness: 4,
+                colors: [
+                    Color {
+                        r: 255,
+                        g: 0,
+                        b: 0,
+                    },
+                    Color {
+                        r: 0,
+                        g: 0,
+                        b: 255,
+                    },
+                ],
+            },
+            random: Random {
+                speed: 0,
+            },
+            wave: Wave {
+                speed: 2,
+                brightness: 4,
+            },
+            single_breathing: SingleBreathing {
+                speed: 2,
+                color: Color {
+                    r: 255,
+                    g: 0,
+                    b: 0,
+                },
+            },
+        },
+        unknown: (
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            0,
+        ),
+        lod: 1,
+    }
