@@ -177,8 +177,8 @@ pub struct Config {
 impl Config {
     pub fn from_raw(raw: &DataReport) -> Result<Config> {
         decode::config_report(raw)
-            .map(|(_, c)| Ok(c))
-            .map_err(|e| e.map_input(|i| i.to_owned()))?
+            .map(|(_, c)| c)
+            .map_err(|_| anyhow::Error::msg("Failed to parse config report"))
 
         // decode::config_report(raw)
         //     .map(|(_, c)| c)
@@ -195,6 +195,7 @@ impl Config {
 }
 
 pub mod buttonmap {
+    #[derive(Debug)]
     #[repr(u8)]
     pub enum DpiSwitch {
         Cycle = 0,
@@ -202,11 +203,14 @@ pub mod buttonmap {
         Down = 2,
     }
 
+    #[derive(Debug)]
     pub enum Macro {
         Burst { bank: u8, count: u8 },
         RepeatUntilRelease(u8),
         RepeatUntilAnotherPress(u8),
     }
+
+    #[derive(Debug)]
     pub enum ButtonAction {
         MouseButton(u8),
         Scroll(u8),
@@ -246,8 +250,8 @@ impl GloriousDevice {
         self.hiddev.send_feature_report(&buf)?;
         self.hiddev.get_feature_report(&mut buf)?;
         decode::version(&buf)
-            .map(|(_, t)| Ok(t.to_owned()))
-            .map_err(|e| e.map_input(|i| i.to_owned()))?
+            .map(|(_, c)| c.to_string())
+            .map_err(|_| anyhow::Error::msg("Failed to parse firmware version"))
     }
 
     fn read_data(&self, cmd: u8) -> Result<DataReport> {
@@ -269,6 +273,13 @@ impl GloriousDevice {
 
     pub fn read_config(&self) -> Result<Config> {
         self.read_config_raw().map(|c| Config::from_raw(&c))?
+    }
+
+    pub fn read_buttonmap(&self) -> Result<ButtonMapping> {
+        let raw = self.read_buttonmap_raw()?;
+        decode::buttonmap(&raw)
+            .map(|(_, c)| c)
+            .map_err(|_| anyhow::Error::msg("Failed to parse button map"))
     }
 
     fn send_data(&mut self, cmd: u8, magic3: u8, data: &DataReport) -> Result<()> {

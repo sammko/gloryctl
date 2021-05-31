@@ -5,9 +5,9 @@ authors = ["Samuel Čavoj <samuel@cavoj.net>"]
 edition = "2018"
 
 [dependencies]
-nom = "5.1.2"
+nom = "6.1.2"
 num_enum = "0.5.1"
-anyhow = "1.0.38"
+anyhow = "1.0.40"
 arrayvec = "0.5.2"
 #clap = { git = "https://github.com/clap-rs/clap/" }
 

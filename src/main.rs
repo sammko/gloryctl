@@ -20,6 +20,7 @@ fn main() -> Result<()> {
 
     dump_data_report(&dev.read_buttonmap_raw()?);
     dump_data_report(&dev.read_config_raw()?);
+    println!("{:?}", dev.read_buttonmap()?);
 
     // let conf = dev.read_config()?;
     // dbg!(conf);

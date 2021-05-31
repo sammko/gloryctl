@@ -1,11 +1,18 @@
 use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::iter::FromIterator;
 use std::str;
 
 use arrayvec::ArrayVec;
 use nom::number::complete::be_u8;
-use nom::{bits, count, do_parse, named, pair, tag, take, take_bits, take_str, tuple, IResult};
+use nom::{
+    bits, count, do_parse, map, named, pair, switch, tag, take, take_bits, take_str, try_parse,
+    tuple, value, IResult,
+};
 
+use crate::device;
+use crate::device::buttonmap;
+use crate::device::buttonmap::ButtonAction;
 use crate::device::{rgb, Color, Config, DpiProfile, DpiValue, PollingRate};
 
 named!(pub version<&[u8], &str>,
@@ -37,7 +44,7 @@ fn polling_rate((input, offset): (&[u8], usize)) -> IResult<(&[u8], usize), Poll
     let ((input, offset), pr) = take_nibble((input, offset))?;
     match PollingRate::try_from(pr) {
         Ok(p) => Ok(((input, offset), p)),
-        Err(_) => Err(nom::Err::Error((
+        Err(_) => Err(nom::Err::Error(nom::error::Error::new(
             (input, offset),
             nom::error::ErrorKind::Alt,
         ))),
@@ -68,7 +75,10 @@ impl rgb::Effect {
         let (input, re) = be_u8(input)?;
         match rgb::Effect::try_from(re) {
             Ok(p) => Ok((input, p)),
-            Err(_) => Err(nom::Err::Error((input, nom::error::ErrorKind::Alt))),
+            Err(_) => Err(nom::Err::Error(nom::error::Error::new(
+                input,
+                nom::error::ErrorKind::Alt,
+            ))),
         }
     }
 }
@@ -271,4 +281,51 @@ pub fn config_report(inp: &[u8]) -> IResult<&[u8], Config> {
             unknown: (unk1.iter().cloned().collect(), unk2),
         },
     ))
+}
+
+named!(
+    button_action<ButtonAction>,
+    switch!(be_u8,
+        0x11 => map!(take!(3), |v| ButtonAction::MouseButton(v[0]))
+      | 0x12 => map!(take!(3), |v| ButtonAction::Scroll(v[0]))
+      | 0x31 => map!(take!(3), |v| ButtonAction::RepeatButton {
+          which: v[0],
+          interval: v[1],
+          count: v[2]
+        })
+      | 0x41 => do_parse!(
+          mode: switch!(be_u8,
+              0x01 => value!(buttonmap::DpiSwitch::Up)
+            | 0x02 => value!(buttonmap::DpiSwitch::Down)
+            | 0x00 => value!(buttonmap::DpiSwitch::Cycle)
+          ) >>
+          _x: take!(2) >>
+          (ButtonAction::DpiSwitch(mode))
+        )
+      | 0x42 => map!(take!(3), |v| ButtonAction::DpiLock(v[0]))
+      | 0x22 => map!(take!(3), |v| ButtonAction::MediaButton(
+          (v[0] as u32) << 16 | (v[1] as u32) << 8 | (v[2] as u32)
+        ))
+      | 0x21 => map!(take!(3), |v| ButtonAction::KeyboardShortcut {
+          modifiers: v[0],
+          key: v[1]
+        })
+      | 0x50 => map!(take!(3), |_| ButtonAction::Disabled)
+      | 0x70 => do_parse!(
+            bank: be_u8 >>
+            x: switch!(be_u8,
+                0x01 => map!(be_u8, |c| buttonmap::Macro::Burst{bank, count: c})
+              | 0x02 => map!(be_u8, |_| buttonmap::Macro::RepeatUntilAnotherPress(bank))
+              | 0x04 => map!(be_u8, |_| buttonmap::Macro::RepeatUntilRelease(bank))
+            ) >>
+            (ButtonAction::Macro(x))
+        )
+    )
+);
+
+pub fn buttonmap(inp: &[u8]) -> IResult<&[u8], device::ButtonMapping> {
+    let (inp, _) = take!(inp, 8)?;
+    let (inp, r) = try_parse!(inp, count!(button_action, 6));
+
+    Ok((inp, r.try_into().unwrap()))
 }
