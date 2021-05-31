@@ -194,6 +194,33 @@ impl Config {
     }
 }
 
+pub mod buttonmap {
+    #[repr(u8)]
+    pub enum DpiSwitch {
+        Cycle = 0,
+        Up = 1,
+        Down = 2,
+    }
+
+    pub enum Macro {
+        Burst { bank: u8, count: u8 },
+        RepeatUntilRelease(u8),
+        RepeatUntilAnotherPress(u8),
+    }
+    pub enum ButtonAction {
+        MouseButton(u8),
+        Scroll(u8),
+        RepeatButton { which: u8, interval: u8, count: u8 },
+        DpiSwitch(DpiSwitch),
+        DpiLock(u8),
+        MediaButton(u32),
+        KeyboardShortcut { modifiers: u8, key: u8 },
+        Disabled,
+        Macro(Macro),
+    }
+}
+
+pub type ButtonMapping = [buttonmap::ButtonAction; 6];
 pub struct GloriousDevice {
     pub hiddev: HidDevice,
 }
