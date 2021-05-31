@@ -11,7 +11,7 @@ anyhow = "1.0.38"
 arrayvec = "0.5.2"
 #clap = { git = "https://github.com/clap-rs/clap/" }
 
-    [dependencies.hidapi]
-    version = "1.2.5"
-    features = ["linux-static-hidraw"]
-    default-features = false
+[dependencies.hidapi]
+version = "1.2.6"
+features = ["linux-static-hidraw"]
+default-features = false
