@@ -1,4 +1,7 @@
-use crate::device::{rgb, Color, Config, DpiValue, DataReport};
+use crate::device::{
+    buttonmap::{ButtonAction, DpiSwitch, MacroMode},
+    rgb, ButtonMapping, Color, Config, DataReport, DpiValue,
+};
 
 struct ByteBuffer {
     buf: Vec<u8>,
@@ -154,5 +157,57 @@ pub fn config_report(cfg: &Config) -> DataReport {
     cfg.rgb_effect_parameters.single_breathing.put(&mut buf);
     buf.put_byte(cfg.lod);
     buf.put_byte(cfg.unknown.1);
+    buf.to_raw_config()
+}
+
+impl ButtonAction {
+    fn put(&self, out: &mut ByteBuffer) {
+        match self {
+            ButtonAction::MouseButton(b) => out.put_bytes(&[0x11, *b, 0x00, 0x00]),
+            ButtonAction::Scroll(b) => out.put_bytes(&[0x12, *b, 0x00, 0x00]),
+            ButtonAction::RepeatButton {
+                which,
+                interval,
+                count,
+            } => out.put_bytes(&[0x31, *which, *interval, *count]),
+            ButtonAction::DpiSwitch(sw) => {
+                out.put_byte(0x41);
+                match sw {
+                    DpiSwitch::Cycle => out.put_byte(0x00),
+                    DpiSwitch::Up => out.put_byte(0x01),
+                    DpiSwitch::Down => out.put_byte(0x02),
+                };
+                out.put_bytes(&[0x00, 0x00]);
+            }
+            ButtonAction::DpiLock(b) => out.put_bytes(&[0x42, *b, 0x00, 0x00]),
+            ButtonAction::MediaButton(x) => {
+                let bs = x.to_be_bytes();
+                out.put_bytes(&[0x22, bs[1], bs[2], bs[3]]);
+            }
+            ButtonAction::KeyboardShortcut { modifiers, key } => {
+                out.put_bytes(&[0x21, *modifiers, *key, 0x00])
+            }
+            ButtonAction::Disabled => out.put_bytes(&[0x50, 0x01, 0x00, 0x00]),
+            ButtonAction::Macro(bank, mode) => {
+                out.put_bytes(&[0x70, *bank]);
+                match mode {
+                    MacroMode::Burst(c) => out.put_bytes(&[0x01, *c]),
+                    MacroMode::RepeatUntilRelease => out.put_bytes(&[0x04, 0x01]),
+                    MacroMode::RepeatUntilAnotherPress => out.put_bytes(&[0x02, 0x01]),
+                }
+            }
+        }
+    }
+}
+
+pub fn buttonmap(mapping: &ButtonMapping) -> DataReport {
+    let mut buf = ByteBuffer::with_capacity(520);
+    buf.put_bytes(&[0x04, 0x12, 0x00, 0x00, 0x00, 0x00, 0x06, 0x00]);
+    for m in mapping {
+        m.put(&mut buf);
+    }
+    for _ in mapping.len()..20 {
+        ButtonAction::Disabled.put(&mut buf);
+    }
     buf.to_raw_config()
 }

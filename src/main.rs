@@ -3,6 +3,8 @@ use anyhow::Result;
 use gloryctl::DataReport;
 use gloryctl::GloriousDevice;
 
+use gloryctl::protocol::encode;
+
 fn dump_data_report(r: &DataReport) {
     for x in r.chunks(16) {
         for byte in x {
@@ -19,8 +21,11 @@ fn main() -> Result<()> {
     dbg!(dev.read_fw_version()?);
 
     dump_data_report(&dev.read_buttonmap_raw()?);
-    dump_data_report(&dev.read_config_raw()?);
-    println!("{:?}", dev.read_buttonmap()?);
+    //dump_data_report(&dev.read_config_raw()?);
+    let map = dev.read_buttonmap()?;
+    println!("{:?}", &map);
+
+    dump_data_report(&encode::buttonmap(&map));
 
     // let conf = dev.read_config()?;
     // dbg!(conf);

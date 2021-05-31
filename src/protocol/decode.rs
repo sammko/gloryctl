@@ -314,11 +314,11 @@ named!(
       | 0x70 => do_parse!(
             bank: be_u8 >>
             x: switch!(be_u8,
-                0x01 => map!(be_u8, |c| buttonmap::Macro::Burst{bank, count: c})
-              | 0x02 => map!(be_u8, |_| buttonmap::Macro::RepeatUntilAnotherPress(bank))
-              | 0x04 => map!(be_u8, |_| buttonmap::Macro::RepeatUntilRelease(bank))
+                0x01 => map!(be_u8, |c| buttonmap::MacroMode::Burst(c))
+              | 0x02 => map!(be_u8, |_| buttonmap::MacroMode::RepeatUntilAnotherPress)
+              | 0x04 => map!(be_u8, |_| buttonmap::MacroMode::RepeatUntilRelease)
             ) >>
-            (ButtonAction::Macro(x))
+            (ButtonAction::Macro(bank, x))
         )
     )
 );

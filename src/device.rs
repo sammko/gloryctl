@@ -204,10 +204,10 @@ pub mod buttonmap {
     }
 
     #[derive(Debug)]
-    pub enum Macro {
-        Burst { bank: u8, count: u8 },
-        RepeatUntilRelease(u8),
-        RepeatUntilAnotherPress(u8),
+    pub enum MacroMode {
+        Burst(u8),
+        RepeatUntilRelease,
+        RepeatUntilAnotherPress,
     }
 
     #[derive(Debug)]
@@ -220,7 +220,7 @@ pub mod buttonmap {
         MediaButton(u32),
         KeyboardShortcut { modifiers: u8, key: u8 },
         Disabled,
-        Macro(Macro),
+        Macro(u8, MacroMode),
     }
 }
 
