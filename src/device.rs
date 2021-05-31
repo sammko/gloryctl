@@ -9,13 +9,15 @@ use crate::protocol::{decode, encode};
 const ID_VENDOR: u16 = 0x258a;
 const ID_PRODUCT: u16 = 0x0036;
 const CONTROL_IF: i32 = 1;
-const HW_REPORT_SEL: u8 = 5;
+const HW_REPORT_MSG: u8 = 5;
 const HW_REPORT_DATA: u8 = 4;
 const HW_CMD_VER: u8 = 1;
-const HW_CMD_CONF: u8 = 17;
-const HW_WRITE_MAGIC: u8 = 123;
+const HW_CMD_CONF: u8 = 0x11;
+const HW_CMD_MAP: u8 = 0x12;
+const HW_CONF_WRITE_MAGIC: u8 = 0x7b;
+const HW_MAP_WRITE_MAGIC: u8 = 0x50;
 
-pub type RawConfig = [u8; 520];
+pub type DataReport = [u8; 520];
 
 #[derive(Debug, Copy, Clone, Default)]
 pub struct Color {
@@ -173,7 +175,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn from_raw(raw: &RawConfig) -> Result<Config> {
+    pub fn from_raw(raw: &DataReport) -> Result<Config> {
         decode::config_report(raw)
             .map(|(_, c)| Ok(c))
             .map_err(|e| e.map_input(|i| i.to_owned()))?
@@ -183,7 +185,7 @@ impl Config {
         //     .map_err(|e| From::from(e.map_input(|i| i.to_owned())))
     }
 
-    pub fn to_raw(&self) -> RawConfig {
+    pub fn to_raw(&self) -> DataReport {
         encode::config_report(self)
     }
 
@@ -212,8 +214,17 @@ impl GloriousDevice {
         return Ok(gdev);
     }
 
-    pub fn read_config_raw(&self) -> Result<RawConfig> {
-        let req = [HW_REPORT_SEL, HW_CMD_CONF, 0, 0, 0, 0];
+    pub fn read_fw_version(&self) -> Result<String> {
+        let mut buf = [HW_REPORT_MSG, HW_CMD_VER, 0, 0, 0, 0];
+        self.hiddev.send_feature_report(&buf)?;
+        self.hiddev.get_feature_report(&mut buf)?;
+        decode::version(&buf)
+            .map(|(_, t)| Ok(t.to_owned()))
+            .map_err(|e| e.map_input(|i| i.to_owned()))?
+    }
+
+    fn read_data(&self, cmd: u8) -> Result<DataReport> {
+        let req = [HW_REPORT_MSG, cmd, 0, 0, 0, 0];
         self.hiddev.send_feature_report(&req)?;
         let mut buf = [0; 520];
         buf[0] = HW_REPORT_DATA;
@@ -221,11 +232,24 @@ impl GloriousDevice {
         return Ok(buf);
     }
 
-    pub fn send_config_raw(&mut self, mut raw: RawConfig) -> Result<()> {
-        let req = [HW_REPORT_SEL, HW_CMD_CONF, 0, 0, 0, 0];
+    pub fn read_config_raw(&self) -> Result<DataReport> {
+        self.read_data(HW_CMD_CONF)
+    }
+
+    pub fn read_buttonmap_raw(&self) -> Result<DataReport> {
+        self.read_data(HW_CMD_MAP)
+    }
+
+    pub fn read_config(&self) -> Result<Config> {
+        self.read_config_raw().map(|c| Config::from_raw(&c))?
+    }
+
+    fn send_data(&mut self, cmd: u8, magic3: u8, data: &DataReport) -> Result<()> {
+        let req = [HW_REPORT_MSG, cmd, 0, 0, 0, 0];
         self.hiddev.send_feature_report(&req)?;
-        raw[3] = HW_WRITE_MAGIC;
-        self.hiddev.send_feature_report(&raw)?;
+        let mut datacpy = data.to_owned();
+        datacpy[3] = magic3;
+        self.hiddev.send_feature_report(&datacpy)?;
         // The mouse sometimes gets confused when reading the config right after
         // writing it. Wait a bit just in case. 10ms seems to be probably enough,
         // doing 20 for good measure.
@@ -233,22 +257,17 @@ impl GloriousDevice {
         Ok(())
     }
 
-    pub fn read_config(&self) -> Result<Config> {
-        self.read_config_raw().map(|c| Config::from_raw(&c))?
+    pub fn send_config_raw(&mut self, data: &DataReport) -> Result<()> {
+        self.send_data(HW_CMD_CONF, HW_CONF_WRITE_MAGIC, data)
+    }
+
+    pub fn send_buttonmap_raw(&mut self, data: &DataReport) -> Result<()> {
+        self.send_data(HW_CMD_MAP, HW_MAP_WRITE_MAGIC, data)
     }
 
     pub fn send_config(&mut self, conf: &Config) -> Result<()> {
         let x = conf.to_raw();
-        self.send_config_raw(x)?;
+        self.send_config_raw(&x)?;
         Ok(())
-    }
-
-    pub fn read_fw_version(&self) -> Result<String> {
-        let mut buf = [HW_REPORT_SEL, HW_CMD_VER, 0, 0, 0, 0];
-        self.hiddev.send_feature_report(&buf)?;
-        self.hiddev.get_feature_report(&mut buf)?;
-        decode::version(&buf)
-            .map(|(_, t)| Ok(t.to_owned()))
-            .map_err(|e| e.map_input(|i| i.to_owned()))?
     }
 }

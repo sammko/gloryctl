@@ -1,4 +1,4 @@
-use crate::device::{rgb, Color, Config, DpiValue, RawConfig};
+use crate::device::{rgb, Color, Config, DpiValue, DataReport};
 
 struct ByteBuffer {
     buf: Vec<u8>,
@@ -19,13 +19,13 @@ impl ByteBuffer {
         self.buf.extend(bs);
     }
 
-    fn to_raw_config(&self) -> RawConfig {
+    fn to_raw_config(&self) -> DataReport {
         // TODO: This entire function is trash.
 
         let mut padded = self.buf.clone();
         assert!(padded.len() <= 520);
         padded.extend(vec![0; 520 - padded.len()]);
-        let mut raw: RawConfig = [0; 520];
+        let mut raw: DataReport = [0; 520];
         raw.copy_from_slice(&padded);
         raw
     }
@@ -114,7 +114,7 @@ impl rgb::params::SingleBreathing {
     }
 }
 
-pub fn config_report(cfg: &Config) -> RawConfig {
+pub fn config_report(cfg: &Config) -> DataReport {
     let mut buf = ByteBuffer::with_capacity(520);
     buf.put_bytes(&cfg.header);
     buf.put_byte(cfg.sensor_id);
