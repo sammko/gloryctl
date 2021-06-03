@@ -1,3 +1,4 @@
+use crate::device::macros;
 use crate::device::{
     buttonmap::{ButtonAction, DpiSwitch, MacroMode},
     rgb, ButtonMapping, Color, Config, DataReport, DpiValue,
@@ -210,4 +211,25 @@ pub fn buttonmap(mapping: &ButtonMapping) -> DataReport {
         ButtonAction::Disabled.put(&mut buf);
     }
     buf.to_raw_config()
+}
+
+impl macros::Event {
+    fn put(&self, out: &mut ByteBuffer) {
+        let mut b1 = 0u8;
+        b1 |= match self.state {
+            macros::State::Up => 1 << 7,
+            macros::State::Down => 0 << 7,
+        };
+
+        let (typ, keycode) = match self.evtype {
+            macros::EventType::Keyboard(c) => (5, c),
+            macros::EventType::Modifier(c) => (6, c),
+            macros::EventType::Mouse(c) => (1, c),
+        };
+
+        b1 |= typ << 4;
+        let duration_bytes = self.duration.to_be_bytes();
+        b1 |= duration_bytes[0] & 0xf;
+        out.put_bytes(&[b1, duration_bytes[1], keycode]);
+    }
 }

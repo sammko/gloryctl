@@ -11,9 +11,8 @@ use nom::{
 };
 
 use crate::device;
-use crate::device::buttonmap;
-use crate::device::buttonmap::ButtonAction;
-use crate::device::{rgb, Color, Config, DpiProfile, DpiValue, PollingRate};
+use crate::device::buttonmap::{ButtonAction, DpiSwitch, MacroMode};
+use crate::device::{macros, rgb, Color, Config, DpiProfile, DpiValue, PollingRate};
 
 named!(pub version<&[u8], &str>,
     do_parse!(
@@ -46,7 +45,7 @@ fn polling_rate((input, offset): (&[u8], usize)) -> IResult<(&[u8], usize), Poll
         Ok(p) => Ok(((input, offset), p)),
         Err(_) => Err(nom::Err::Error(nom::error::Error::new(
             (input, offset),
-            nom::error::ErrorKind::Alt,
+            nom::error::ErrorKind::Switch,
         ))),
     }
 }
@@ -77,7 +76,7 @@ impl rgb::Effect {
             Ok(p) => Ok((input, p)),
             Err(_) => Err(nom::Err::Error(nom::error::Error::new(
                 input,
-                nom::error::ErrorKind::Alt,
+                nom::error::ErrorKind::Switch,
             ))),
         }
     }
@@ -295,9 +294,9 @@ named!(
         })
       | 0x41 => do_parse!(
           mode: switch!(be_u8,
-              0x01 => value!(buttonmap::DpiSwitch::Up)
-            | 0x02 => value!(buttonmap::DpiSwitch::Down)
-            | 0x00 => value!(buttonmap::DpiSwitch::Cycle)
+              0x01 => value!(DpiSwitch::Up)
+            | 0x02 => value!(DpiSwitch::Down)
+            | 0x00 => value!(DpiSwitch::Cycle)
           ) >>
           _x: take!(2) >>
           (ButtonAction::DpiSwitch(mode))
@@ -314,9 +313,9 @@ named!(
       | 0x70 => do_parse!(
             bank: be_u8 >>
             x: switch!(be_u8,
-                0x01 => map!(be_u8, |c| buttonmap::MacroMode::Burst(c))
-              | 0x02 => map!(be_u8, |_| buttonmap::MacroMode::RepeatUntilAnotherPress)
-              | 0x04 => map!(be_u8, |_| buttonmap::MacroMode::RepeatUntilRelease)
+                0x01 => map!(be_u8, |c| MacroMode::Burst(c))
+              | 0x02 => map!(be_u8, |_| MacroMode::RepeatUntilAnotherPress)
+              | 0x04 => map!(be_u8, |_| MacroMode::RepeatUntilRelease)
             ) >>
             (ButtonAction::Macro(bank, x))
         )
@@ -328,4 +327,53 @@ pub fn buttonmap(inp: &[u8]) -> IResult<&[u8], device::ButtonMapping> {
     let (inp, r) = try_parse!(inp, count!(button_action, 6));
 
     Ok((inp, r.try_into().unwrap()))
+}
+
+impl macros::Event {
+    pub fn parse(inp: &[u8]) -> IResult<&[u8], Self> {
+        let (inp, (state, typ, duration)): (&[u8], (u8, u8, u16)) = bits!(
+            inp,
+            tuple!(take_bits!(1u8), take_bits!(3u8), take_bits!(12u16))
+        )?;
+        let state_ = match state {
+            0 => Ok(macros::State::Down),
+            1 => Ok(macros::State::Up),
+            _ => Err(nom::Err::Error(nom::error::Error::new(
+                inp,
+                nom::error::ErrorKind::Switch,
+            ))),
+        }?;
+        let (inp, keycode) = be_u8(inp)?;
+        let evtype_ = match typ {
+            0x01 => Ok(macros::EventType::Mouse(keycode)),
+            0x05 => Ok(macros::EventType::Keyboard(keycode)),
+            0x06 => Ok(macros::EventType::Modifier(keycode)),
+            _ => Err(nom::Err::Error(nom::error::Error::new(
+                inp,
+                nom::error::ErrorKind::Switch,
+            ))),
+        }?;
+        Ok((
+            inp,
+            Self {
+                state: state_,
+                evtype: evtype_,
+                duration: duration,
+            },
+        ))
+    }
+}
+
+impl macros::Macro {
+    named!(
+        parse<Self>,
+        do_parse!(
+            _header: take!(8) >>
+            bank_number: be_u8 >>
+            _unk1: be_u8 >> // maybe part of bank number
+            count: be_u8 >>
+            events: count!(macros::Event::parse, count.into()) >>
+            (Self {bank_number, events})
+        )
+    );
 }

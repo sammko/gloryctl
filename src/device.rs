@@ -212,6 +212,7 @@ pub mod buttonmap {
 
     #[derive(Debug)]
     pub enum ButtonAction {
+        // TODO replace the u8's with real types
         MouseButton(u8),
         Scroll(u8),
         RepeatButton { which: u8, interval: u8, count: u8 },
@@ -221,6 +222,31 @@ pub mod buttonmap {
         KeyboardShortcut { modifiers: u8, key: u8 },
         Disabled,
         Macro(u8, MacroMode),
+    }
+}
+
+pub mod macros {
+    #[repr(u8)]
+    pub enum EventType {
+        Keyboard(u8),
+        Modifier(u8),
+        Mouse(u8),
+    }
+
+    pub enum State {
+        Up,
+        Down,
+    }
+
+    pub struct Event {
+        pub state: State,
+        pub evtype: EventType,
+        pub duration: u16,
+    }
+
+    pub struct Macro {
+        pub bank_number: u8,
+        pub events: Vec<Event>,
     }
 }
 
@@ -305,7 +331,11 @@ impl GloriousDevice {
 
     pub fn send_config(&mut self, conf: &Config) -> Result<()> {
         let x = conf.to_raw();
-        self.send_config_raw(&x)?;
-        Ok(())
+        self.send_config_raw(&x)
+    }
+
+    pub fn send_buttonmap(&mut self, map: &ButtonMapping) -> Result<()> {
+        let x = encode::buttonmap(&map);
+        self.send_config_raw(&x)
     }
 }
