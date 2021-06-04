@@ -1,5 +1,8 @@
+use std::str::FromStr;
+
 use anyhow::{anyhow, Result};
 use arrayvec::ArrayVec;
+use hex::FromHex;
 use hidapi::{HidApi, HidDevice};
 use num_enum::TryFromPrimitive;
 
@@ -24,6 +27,19 @@ pub struct Color {
     pub r: u8,
     pub g: u8,
     pub b: u8,
+}
+
+impl FromStr for Color {
+    type Err = hex::FromHexError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let buffer = <[u8; 3]>::from_hex(s)?;
+        Ok(Self {
+            r: buffer[0],
+            g: buffer[1],
+            b: buffer[2],
+        })
+    }
 }
 
 #[derive(Debug, Copy, Clone)]

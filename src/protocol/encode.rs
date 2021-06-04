@@ -214,6 +214,7 @@ pub fn buttonmap(mapping: &ButtonMapping) -> DataReport {
 }
 
 impl macros::Event {
+    #[allow(dead_code)]
     fn put(&self, out: &mut ByteBuffer) {
         let mut b1 = 0u8;
         b1 |= match self.state {
