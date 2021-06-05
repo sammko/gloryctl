@@ -45,9 +45,8 @@ impl FromStr for Color {
 
 #[derive(Debug, Copy, Clone)]
 pub enum DpiValue {
-    // probably use enums instead of u8
-    Double(u8, u8),
-    Single(u8),
+    Double(u16, u16),
+    Single(u16),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -206,8 +205,19 @@ impl Config {
         encode::config_report(self)
     }
 
-    pub fn fix_profile_count(&mut self) {
-        self.dpi_profile_count = self.dpi_profiles.iter().filter(|p| p.enabled).count() as u8;
+    pub fn fixup_dpi_metadata(&mut self) {
+        let mut count = 0;
+        let mut indep = false;
+        for prof in &self.dpi_profiles {
+            if prof.enabled {
+                count += 1;
+            }
+            if let DpiValue::Double(_, _) = prof.value {
+                indep = true;
+            }
+        }
+        self.dpi_profile_count = count;
+        self.dpi_axes_independent = indep;
     }
 }
 
@@ -246,6 +256,21 @@ impl TryFrom<u8> for MouseButton {
     }
 }
 
+impl FromStr for MouseButton {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "left" => Ok(Self::LEFT),
+            "right" => Ok(Self::RIGHT),
+            "middle" => Ok(Self::MIDDLE),
+            "back" => Ok(Self::BACK),
+            "forward" => Ok(Self::FORWARD),
+            _ => Err(anyhow!("Invalid mouse button '{}'", s)),
+        }
+    }
+}
+
 bitflags! {
     pub struct MediaButton: u32 {
         const HOME_PAGE    = 0x000002;
@@ -263,10 +288,36 @@ bitflags! {
     }
 }
 
+impl FromStr for MediaButton {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "home" | "home-page" => Ok(Self::HOME_PAGE),
+            "player" | "media-player" => Ok(Self::MEDIA_PLAYER),
+            "explorer" => Ok(Self::EXPLORER),
+            "mail" | "email" => Ok(Self::EMAIL),
+            "calc" | "calculator" => Ok(Self::CALCULATOR),
+            "next" => Ok(Self::NEXT),
+            "prev" | "previous" => Ok(Self::PREVIOUS),
+            "stop" => Ok(Self::STOP),
+            "playpause" | "play-pause" => Ok(Self::PLAY_PAUSE),
+            "mute" | "toggle-mute" => Ok(Self::MUTE),
+            "vol-up" | "volume-up" => Ok(Self::VOLUME_UP),
+            "vol-down" | "volume-down" => Ok(Self::VOLUME_DOWN),
+            _ => Err(anyhow!("Invalid media button '{}'", s)),
+        }
+    }
+}
+
 pub mod buttonmap {
+    use std::str::FromStr;
+
+    use anyhow::{anyhow, Context};
+
     use super::{MediaButton, Modifier, MouseButton};
 
-    #[derive(Debug)]
+    #[derive(Debug, Copy, Clone)]
     #[repr(u8)]
     pub enum DpiSwitch {
         Cycle = 0,
@@ -274,24 +325,98 @@ pub mod buttonmap {
         Down = 2,
     }
 
-    #[derive(Debug)]
+    impl FromStr for DpiSwitch {
+        type Err = anyhow::Error;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            match s {
+                "cycle" | "loop" => Ok(Self::Cycle),
+                "up" => Ok(Self::Up),
+                "down" => Ok(Self::Down),
+                _ => Err(anyhow!("Invalid DPI switch action")),
+            }
+        }
+    }
+
+    #[derive(Debug, Copy, Clone)]
     pub enum MacroMode {
         Burst(u8),
         RepeatUntilRelease,
         RepeatUntilAnotherPress,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Copy, Clone)]
     pub enum ButtonAction {
         MouseButton(MouseButton),
-        Scroll(u8),
-        RepeatButton { which: u8, interval: u8, count: u8 },
+        Scroll(i8),
+        RepeatButton {
+            which: MouseButton,
+            interval: u8,
+            count: u8,
+        },
         DpiSwitch(DpiSwitch),
-        DpiLock(u8),
+        DpiLock(u16),
         MediaButton(MediaButton),
-        KeyboardShortcut { modifiers: Modifier, key: u8 },
+        KeyboardShortcut {
+            modifiers: Modifier,
+            key: u8,
+        },
         Disabled,
         Macro(u8, MacroMode),
+    }
+
+    pub const DEFAULT_MAP: [ButtonAction; 6] = [
+        ButtonAction::MouseButton(MouseButton::LEFT),
+        ButtonAction::MouseButton(MouseButton::RIGHT),
+        ButtonAction::MouseButton(MouseButton::MIDDLE),
+        ButtonAction::MouseButton(MouseButton::BACK),
+        ButtonAction::MouseButton(MouseButton::FORWARD),
+        ButtonAction::DpiSwitch(DpiSwitch::Cycle),
+    ];
+
+    impl FromStr for ButtonAction {
+        type Err = anyhow::Error;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            if s == "disable" {
+                return Ok(Self::Disabled);
+            }
+            let (branch, data) = s
+                .split_once(':')
+                .context("Action must be 'disable' or have parameters")?;
+            match branch {
+                "mouse" => Ok(Self::MouseButton(MouseButton::from_str(data)?)),
+                "scroll" => Ok(Self::Scroll(match data {
+                    "up" => 1,
+                    "down" => -1,
+                    s => i8::from_str(s)?,
+                })),
+                "repeat" => {
+                    let parts: Vec<&str> = data.split(':').collect();
+                    if parts.len() < 2 || parts.len() > 3 {
+                        Err(anyhow!(
+                            "Action 'repeat' takes 2 or 3 parameters separated by colons (key:count[:interval])"
+                        ))
+                    } else {
+                        Ok(Self::RepeatButton {
+                            which: MouseButton::from_str(parts[0])?,
+                            count: u8::from_str(parts[1])?,
+                            interval: if parts.len() > 2 {
+                                u8::from_str(parts[2])?
+                            } else {
+                                50
+                            },
+                        })
+                    }
+                }
+                "dpi" => Ok(Self::DpiSwitch(DpiSwitch::from_str(data)?)),
+                "dpi-lock" => Ok(Self::DpiLock(u16::from_str(data)?)),
+                "media" => Ok(Self::MediaButton(MediaButton::from_str(data)?)),
+                // TODO macro and keyboard shortcut
+                "disable" => Err(anyhow!("Action 'disable' does not take any parameter")),
+                _ => Err(anyhow!("Unknown action type '{}'", branch)),
+            }
+        }
     }
 }
 
@@ -352,6 +477,13 @@ impl GloriousDevice {
             .map_err(|_| anyhow::Error::msg("Failed to parse firmware version"))
     }
 
+    pub fn send_msg(&self, a: u8, s: u8) -> Result<()> {
+        let buf = [HW_REPORT_MSG, a, s, 0, 0, 0];
+        self.hiddev.send_feature_report(&buf)?;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        Ok(())
+    }
+
     fn read_data(&self, cmd: u8) -> Result<DataReport> {
         let req = [HW_REPORT_MSG, cmd, 0, 0, 0, 0];
         self.hiddev.send_feature_report(&req)?;
@@ -380,9 +512,9 @@ impl GloriousDevice {
             .map_err(|_| anyhow::Error::msg("Failed to parse button map"))
     }
 
-    fn send_data(&mut self, cmd: u8, magic3: u8, data: &DataReport) -> Result<()> {
-        let req = [HW_REPORT_MSG, cmd, 0, 0, 0, 0];
-        self.hiddev.send_feature_report(&req)?;
+    fn send_data(&mut self, _cmd: u8, magic3: u8, data: &DataReport) -> Result<()> {
+        // let req = [HW_REPORT_MSG, cmd, 0, 0, 0, 0];
+        // self.hiddev.send_feature_report(&req)?;
         let mut datacpy = data.to_owned();
         datacpy[3] = magic3;
         self.hiddev.send_feature_report(&datacpy)?;

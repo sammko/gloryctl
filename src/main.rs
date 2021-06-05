@@ -1,11 +1,10 @@
 use std::convert::TryInto;
+use std::str::FromStr;
 
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 
 use clap::{ArgEnum, Clap};
-use gloryctl::rgb::Effect;
-use gloryctl::Color;
-use gloryctl::GloriousDevice;
+use gloryctl::{rgb::Effect, ButtonAction, Color, DpiValue, GloriousDevice};
 
 #[derive(Clap)]
 pub struct Opts {
@@ -16,6 +15,8 @@ pub struct Opts {
 #[derive(Clap)]
 enum Command {
     Dump(Dump),
+    Button(Buttons),
+    Dpi(Dpi),
     /// Configure the RGB effect
     Rgb {
         #[clap(subcommand)]
@@ -25,6 +26,42 @@ enum Command {
 
 #[derive(Clap)]
 struct Dump {}
+
+#[derive(Clap)]
+struct Buttons {
+    list: Vec<SingleButton>,
+}
+
+struct SingleButton {
+    which: usize,
+    action: ButtonAction,
+}
+
+impl FromStr for SingleButton {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (btn, act) = s
+            .split_once(':')
+            .context("Format: button:action-type[:action-params]")?;
+        let which = usize::from_str(btn)?;
+        let action = ButtonAction::from_str(act)?;
+        Ok(Self { which, action })
+    }
+}
+
+#[derive(Clap)]
+struct Dpi {
+    #[clap(possible_values = &["1", "2", "3", "4", "5", "6", "7", "8"])]
+    which: usize,
+
+    #[clap(short, long)]
+    color: Option<Color>,
+
+    #[clap(short, long)]
+    dpi: Option<u16>,
+    // TODO independent X and Y
+}
 
 #[derive(Clap)]
 enum Rgb {
@@ -159,7 +196,42 @@ impl Dump {
     fn run(&self, dev: &mut GloriousDevice) -> Result<()> {
         dbg!(dev.read_fw_version()?);
         dbg!(dev.read_config()?);
-        dbg!(dev.read_buttonmap()?);
+        //dbg!(dev.read_buttonmap()?);
+        Ok(())
+    }
+}
+
+impl Buttons {
+    fn run(&self, dev: &mut GloriousDevice) -> Result<()> {
+        let mut map = gloryctl::DEFAULT_MAP;
+        for b in &self.list {
+            if b.which < 1 || b.which > 6 {
+                return Err(anyhow!("Invalid button number {}", b.which));
+            }
+            let i = b.which - 1;
+            map[i] = b.action;
+        }
+        dev.send_buttonmap(&map)
+    }
+}
+
+impl Dpi {
+    fn run(&self, dev: &mut GloriousDevice) -> Result<()> {
+        let mut conf = dev.read_config()?;
+        assert!(self.which >= 1 && self.which <= 8);
+        let i = self.which - 1;
+        let prof = &mut conf.dpi_profiles[i];
+
+        if let Some(color) = self.color {
+            prof.color = color;
+        }
+
+        if let Some(dpi) = self.dpi {
+            prof.value = DpiValue::Single(dpi)
+        }
+
+        conf.fixup_dpi_metadata();
+        dev.send_config(&conf)?;
         Ok(())
     }
 }
@@ -286,10 +358,12 @@ fn main() -> Result<()> {
 
     let hid = hidapi::HidApi::new()?;
     let mut dev = GloriousDevice::open_first(&hid)?;
+    dev.send_msg(0x02, 1)?;
 
     match opts.cmd {
-        Command::Dump(dump) => dump.run(&mut dev)?,
-        Command::Rgb { rgbcmd } => rgbcmd.run(&mut dev)?,
+        Command::Dump(dump) => dump.run(&mut dev),
+        Command::Button(b) => b.run(&mut dev),
+        Command::Rgb { rgbcmd } => rgbcmd.run(&mut dev),
+        Command::Dpi(dpi) => dpi.run(&mut dev),
     }
-    Ok(())
 }

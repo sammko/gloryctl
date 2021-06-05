@@ -61,9 +61,9 @@ fn dpi_profiles_from_raw(
             color: colors[i],
             enabled: (mask & (1 << (i as u8))) == 0,
             value: if indep {
-                DpiValue::Double(values[2 * i], values[2 * i + 1])
+                DpiValue::Double(dpi_decode(values[2 * i]), dpi_decode(values[2 * i + 1]))
             } else {
-                DpiValue::Single(values[i])
+                DpiValue::Single(dpi_decode(values[i]))
             },
         })
         .collect::<ArrayVec<_>>()
@@ -302,15 +302,19 @@ impl device::MediaButton {
     }
 }
 
+fn dpi_decode(dpiv: u8) -> u16 {
+    ((dpiv as u16) + 1) * 100
+}
+
 named!(
     button_action<ButtonAction>,
     switch!(be_u8,
         0x11 => map!(tuple!(try_parse_from_u8, take!(2)), |(btn, _)| ButtonAction::MouseButton(btn))
-      | 0x12 => map!(take!(3), |v| ButtonAction::Scroll(v[0]))
-      | 0x31 => map!(take!(3), |v| ButtonAction::RepeatButton {
-          which: v[0],
-          interval: v[1],
-          count: v[2]
+      | 0x12 => map!(take!(3), |v| ButtonAction::Scroll(i8::from_be_bytes([v[0]])))
+      | 0x31 => map!(tuple!(try_parse_from_u8, take!(2)), |(btn, v)| ButtonAction::RepeatButton {
+          which: btn,
+          interval: v[0],
+          count: v[1]
         })
       | 0x41 => do_parse!(
           mode: switch!(be_u8,
@@ -321,7 +325,7 @@ named!(
           _x: take!(2) >>
           (ButtonAction::DpiSwitch(mode))
         )
-      | 0x42 => map!(take!(3), |v| ButtonAction::DpiLock(v[0]))
+      | 0x42 => map!(take!(3), |v| ButtonAction::DpiLock(dpi_decode(v[0])))
       | 0x22 => map!(device::MediaButton::parse_3b, |x| ButtonAction::MediaButton(x))
       | 0x21 => map!(tuple!(try_parse_from_u8, take!(2)), |(m, v)| ButtonAction::KeyboardShortcut {
           modifiers: m,

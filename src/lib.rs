@@ -1,4 +1,7 @@
 mod device;
-pub mod protocol; // TODO this is only pub for debugging
+mod protocol;
 
-pub use device::{buttonmap::ButtonAction, macros, rgb, Color, Config, DataReport, GloriousDevice};
+pub use device::{
+    buttonmap::ButtonAction, buttonmap::DEFAULT_MAP, macros, rgb, Color, Config, DataReport,
+    DpiProfile, DpiValue, GloriousDevice,
+};

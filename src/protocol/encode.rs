@@ -131,10 +131,16 @@ pub fn config_report(cfg: &Config) -> DataReport {
     buf.put_byte(enabled_mask);
     for dpi in cfg.dpi_profiles.iter() {
         match dpi.value {
-            DpiValue::Single(x) => buf.put_byte(x),
+            DpiValue::Single(x) => {
+                buf.put_byte(dpi_encode(x));
+                if cfg.dpi_axes_independent {
+                    buf.put_byte(dpi_encode(x));
+                }
+            }
             DpiValue::Double(x, y) => {
-                buf.put_byte(x);
-                buf.put_byte(y);
+                assert!(cfg.dpi_axes_independent); // TODO error handling
+                buf.put_byte(dpi_encode(x));
+                buf.put_byte(dpi_encode(y));
             }
         }
     }
@@ -161,16 +167,25 @@ pub fn config_report(cfg: &Config) -> DataReport {
     buf.to_raw_config()
 }
 
+fn dpi_encode(dpi: u16) -> u8 {
+    // TODO proper error handling for encoding
+    if dpi > 25600 {
+        255u8
+    } else {
+        ((dpi / 100) - 1) as u8
+    }
+}
+
 impl ButtonAction {
     fn put(&self, out: &mut ByteBuffer) {
         match self {
             ButtonAction::MouseButton(b) => out.put_bytes(&[0x11, b.bits(), 0x00, 0x00]),
-            ButtonAction::Scroll(b) => out.put_bytes(&[0x12, *b, 0x00, 0x00]),
+            ButtonAction::Scroll(b) => out.put_bytes(&[0x12, b.to_be_bytes()[0], 0x00, 0x00]),
             ButtonAction::RepeatButton {
                 which,
                 interval,
                 count,
-            } => out.put_bytes(&[0x31, *which, *interval, *count]),
+            } => out.put_bytes(&[0x31, which.bits(), *interval, *count]),
             ButtonAction::DpiSwitch(sw) => {
                 out.put_byte(0x41);
                 match sw {
@@ -180,7 +195,7 @@ impl ButtonAction {
                 };
                 out.put_bytes(&[0x00, 0x00]);
             }
-            ButtonAction::DpiLock(b) => out.put_bytes(&[0x42, *b, 0x00, 0x00]),
+            ButtonAction::DpiLock(b) => out.put_bytes(&[0x42, dpi_encode(*b), 0x00, 0x00]),
             ButtonAction::MediaButton(x) => {
                 let bs = x.bits().to_be_bytes();
                 out.put_bytes(&[0x22, bs[1], bs[2], bs[3]]);
