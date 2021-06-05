@@ -282,10 +282,30 @@ pub fn config_report(inp: &[u8]) -> IResult<&[u8], Config> {
     ))
 }
 
+fn try_parse_from_u8<T: TryFrom<u8>>(inp: &[u8]) -> IResult<&[u8], T> {
+    let (inp, b) = be_u8(inp)?;
+    T::try_from(b)
+        .map(|v| (inp, v))
+        .map_err(|_| nom::Err::Error(nom::error::Error::new(inp, nom::error::ErrorKind::Switch)))
+}
+
+impl device::MediaButton {
+    fn parse_3b(inp: &[u8]) -> IResult<&[u8], Self> {
+        let (inp, v) = take!(inp, 3)?;
+        let val = (v[0] as u32) << 16 | (v[1] as u32) << 8 | (v[2] as u32);
+        Self::from_bits(val)
+            .map(|v| (inp, v))
+            .ok_or(nom::Err::Error(nom::error::Error::new(
+                inp,
+                nom::error::ErrorKind::Switch,
+            )))
+    }
+}
+
 named!(
     button_action<ButtonAction>,
     switch!(be_u8,
-        0x11 => map!(take!(3), |v| ButtonAction::MouseButton(v[0]))
+        0x11 => map!(tuple!(try_parse_from_u8, take!(2)), |(btn, _)| ButtonAction::MouseButton(btn))
       | 0x12 => map!(take!(3), |v| ButtonAction::Scroll(v[0]))
       | 0x31 => map!(take!(3), |v| ButtonAction::RepeatButton {
           which: v[0],
@@ -302,11 +322,9 @@ named!(
           (ButtonAction::DpiSwitch(mode))
         )
       | 0x42 => map!(take!(3), |v| ButtonAction::DpiLock(v[0]))
-      | 0x22 => map!(take!(3), |v| ButtonAction::MediaButton(
-          (v[0] as u32) << 16 | (v[1] as u32) << 8 | (v[2] as u32)
-        ))
-      | 0x21 => map!(take!(3), |v| ButtonAction::KeyboardShortcut {
-          modifiers: v[0],
+      | 0x22 => map!(device::MediaButton::parse_3b, |x| ButtonAction::MediaButton(x))
+      | 0x21 => map!(tuple!(try_parse_from_u8, take!(2)), |(m, v)| ButtonAction::KeyboardShortcut {
+          modifiers: m,
           key: v[1]
         })
       | 0x50 => map!(take!(3), |_| ButtonAction::Disabled)
@@ -343,11 +361,11 @@ impl macros::Event {
                 nom::error::ErrorKind::Switch,
             ))),
         }?;
-        let (inp, keycode) = be_u8(inp)?;
-        let evtype_ = match typ {
-            0x01 => Ok(macros::EventType::Mouse(keycode)),
-            0x05 => Ok(macros::EventType::Keyboard(keycode)),
-            0x06 => Ok(macros::EventType::Modifier(keycode)),
+        //let (inp, keycode) = be_u8(inp)?;
+        let (inp, evtype_) = match typ {
+            0x01 => try_parse_from_u8(inp).map(|(r, v)| (r, macros::EventType::Mouse(v))),
+            0x05 => try_parse_from_u8(inp).map(|(r, v)| (r, macros::EventType::Keyboard(v))),
+            0x06 => try_parse_from_u8(inp).map(|(r, v)| (r, macros::EventType::Modifier(v))),
             _ => Err(nom::Err::Error(nom::error::Error::new(
                 inp,
                 nom::error::ErrorKind::Switch,

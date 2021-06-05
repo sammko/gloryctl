@@ -1,7 +1,8 @@
-use std::str::FromStr;
+use std::{convert::TryFrom, str::FromStr};
 
 use anyhow::{anyhow, Result};
 use arrayvec::ArrayVec;
+use bitflags::bitflags;
 use hex::FromHex;
 use hidapi::{HidApi, HidDevice};
 use num_enum::TryFromPrimitive;
@@ -210,7 +211,61 @@ impl Config {
     }
 }
 
+bitflags! {
+    pub struct Modifier: u8 {
+        const CTRL  = 0x01;
+        const SHIFT = 0x02;
+        const ALT   = 0x04;
+        const SUPER = 0x08;
+    }
+}
+
+impl TryFrom<u8> for Modifier {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Self::from_bits(value).ok_or(())
+    }
+}
+
+bitflags! {
+    pub struct MouseButton: u8 {
+        const LEFT    = 0x01;
+        const RIGHT   = 0x02;
+        const MIDDLE  = 0x04;
+        const BACK    = 0x08;
+        const FORWARD = 0x10;
+    }
+}
+
+impl TryFrom<u8> for MouseButton {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Self::from_bits(value).ok_or(())
+    }
+}
+
+bitflags! {
+    pub struct MediaButton: u32 {
+        const HOME_PAGE    = 0x000002;
+        const MEDIA_PLAYER = 0x000100;
+        const EXPLORER     = 0x000200;
+        const EMAIL        = 0x001000;
+        const CALCULATOR   = 0x002000;
+        const NEXT         = 0x010000;
+        const PREVIOUS     = 0x020000;
+        const STOP         = 0x040000;
+        const PLAY_PAUSE   = 0x080000;
+        const MUTE         = 0x100000;
+        const VOLUME_UP    = 0x400000;
+        const VOLUME_DOWN  = 0x800000;
+    }
+}
+
 pub mod buttonmap {
+    use super::{MediaButton, Modifier, MouseButton};
+
     #[derive(Debug)]
     #[repr(u8)]
     pub enum DpiSwitch {
@@ -228,25 +283,26 @@ pub mod buttonmap {
 
     #[derive(Debug)]
     pub enum ButtonAction {
-        // TODO replace the u8's with real types
-        MouseButton(u8),
+        MouseButton(MouseButton),
         Scroll(u8),
         RepeatButton { which: u8, interval: u8, count: u8 },
         DpiSwitch(DpiSwitch),
         DpiLock(u8),
-        MediaButton(u32),
-        KeyboardShortcut { modifiers: u8, key: u8 },
+        MediaButton(MediaButton),
+        KeyboardShortcut { modifiers: Modifier, key: u8 },
         Disabled,
         Macro(u8, MacroMode),
     }
 }
 
 pub mod macros {
+    use super::{Modifier, MouseButton};
+
     #[repr(u8)]
     pub enum EventType {
         Keyboard(u8),
-        Modifier(u8),
-        Mouse(u8),
+        Modifier(Modifier),
+        Mouse(MouseButton),
     }
 
     pub enum State {

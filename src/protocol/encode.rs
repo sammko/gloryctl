@@ -164,7 +164,7 @@ pub fn config_report(cfg: &Config) -> DataReport {
 impl ButtonAction {
     fn put(&self, out: &mut ByteBuffer) {
         match self {
-            ButtonAction::MouseButton(b) => out.put_bytes(&[0x11, *b, 0x00, 0x00]),
+            ButtonAction::MouseButton(b) => out.put_bytes(&[0x11, b.bits(), 0x00, 0x00]),
             ButtonAction::Scroll(b) => out.put_bytes(&[0x12, *b, 0x00, 0x00]),
             ButtonAction::RepeatButton {
                 which,
@@ -182,11 +182,11 @@ impl ButtonAction {
             }
             ButtonAction::DpiLock(b) => out.put_bytes(&[0x42, *b, 0x00, 0x00]),
             ButtonAction::MediaButton(x) => {
-                let bs = x.to_be_bytes();
+                let bs = x.bits().to_be_bytes();
                 out.put_bytes(&[0x22, bs[1], bs[2], bs[3]]);
             }
             ButtonAction::KeyboardShortcut { modifiers, key } => {
-                out.put_bytes(&[0x21, *modifiers, *key, 0x00])
+                out.put_bytes(&[0x21, modifiers.bits(), *key, 0x00])
             }
             ButtonAction::Disabled => out.put_bytes(&[0x50, 0x01, 0x00, 0x00]),
             ButtonAction::Macro(bank, mode) => {
@@ -224,8 +224,8 @@ impl macros::Event {
 
         let (typ, keycode) = match self.evtype {
             macros::EventType::Keyboard(c) => (5, c),
-            macros::EventType::Modifier(c) => (6, c),
-            macros::EventType::Mouse(c) => (1, c),
+            macros::EventType::Modifier(c) => (6, c.bits()),
+            macros::EventType::Mouse(c) => (1, c.bits()),
         };
 
         b1 |= typ << 4;
