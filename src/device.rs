@@ -238,6 +238,25 @@ impl TryFrom<u8> for Modifier {
     }
 }
 
+impl FromStr for Modifier {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let split = s.split('+');
+        let mut ret = Modifier::from_bits(0).unwrap();
+        for w in split {
+            ret |= match w {
+                "ctrl" => Ok(Modifier::CTRL),
+                "shift" => Ok(Modifier::SHIFT),
+                "alt" => Ok(Modifier::ALT),
+                "super" | "win" => Ok(Modifier::SUPER),
+                _ => Err(anyhow!("Unknown modifier '{}'", w)),
+            }?;
+        }
+        Ok(ret)
+    }
+}
+
 bitflags! {
     pub struct MouseButton: u8 {
         const LEFT    = 0x01;
@@ -412,7 +431,20 @@ pub mod buttonmap {
                 "dpi" => Ok(Self::DpiSwitch(DpiSwitch::from_str(data)?)),
                 "dpi-lock" => Ok(Self::DpiLock(u16::from_str(data)?)),
                 "media" => Ok(Self::MediaButton(MediaButton::from_str(data)?)),
-                // TODO macro and keyboard shortcut
+                "macro" => Ok(Self::Macro(u8::from_str(data)?, MacroMode::Burst(1))), // TODO other repeat modes
+                "keyboard" => {
+                    let parts: Vec<&str> = data.split(':').collect();
+                    if parts.len() != 2 {
+                        Err(anyhow!(
+                            "Action 'repeat' takes 2 parameters separated by colons (modifiers:key)"
+                        ))
+                    } else {
+                        Ok(Self::KeyboardShortcut {
+                            modifiers: Modifier::from_str(parts[0])?,
+                            key: u8::from_str(parts[1])?, // TODO names for keys
+                        })
+                    }
+                }
                 "disable" => Err(anyhow!("Action 'disable' does not take any parameter")),
                 _ => Err(anyhow!("Unknown action type '{}'", branch)),
             }
