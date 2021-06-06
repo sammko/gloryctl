@@ -4,6 +4,7 @@ use std::str::FromStr;
 use anyhow::{anyhow, Context, Result};
 
 use clap::{ArgEnum, Clap};
+use gloryctl::macros::Event;
 use gloryctl::{rgb::Effect, ButtonAction, Color, DpiValue, GloriousDevice};
 
 #[derive(Clap)]
@@ -17,6 +18,7 @@ enum Command {
     Dump(Dump),
     Button(Buttons),
     Dpi(Dpi),
+    Macro(Macro),
     /// Configure the RGB effect
     Rgb {
         #[clap(subcommand)]
@@ -61,6 +63,13 @@ struct Dpi {
     #[clap(short, long)]
     dpi: Option<u16>,
     // TODO independent X and Y
+}
+
+#[derive(Clap)]
+struct Macro {
+    bank: u8,
+
+    events: Vec<Event>,
 }
 
 #[derive(Clap)]
@@ -236,6 +245,12 @@ impl Dpi {
     }
 }
 
+impl Macro {
+    fn run(&self, dev: &mut GloriousDevice) -> Result<()> {
+        dev.send_macro_bank(self.bank, &self.events)
+    }
+}
+
 impl Rgb {
     fn run(&self, dev: &mut GloriousDevice) -> Result<()> {
         let mut conf = dev.read_config()?;
@@ -365,5 +380,6 @@ fn main() -> Result<()> {
         Command::Button(b) => b.run(&mut dev),
         Command::Rgb { rgbcmd } => rgbcmd.run(&mut dev),
         Command::Dpi(dpi) => dpi.run(&mut dev),
+        Command::Macro(macro_) => macro_.run(&mut dev),
     }
 }

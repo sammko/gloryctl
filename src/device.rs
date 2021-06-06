@@ -9,6 +9,8 @@ use num_enum::TryFromPrimitive;
 
 use crate::protocol::{decode, encode};
 
+use self::macros::Event;
+
 // Glorious Model O
 const ID_VENDOR: u16 = 0x258a;
 const ID_PRODUCT: u16 = 0x0036;
@@ -454,7 +456,10 @@ pub mod buttonmap {
 
 pub mod macros {
     use super::{Modifier, MouseButton};
+    use anyhow::anyhow;
+    use std::str::FromStr;
 
+    #[derive(Debug, Copy, Clone)]
     #[repr(u8)]
     pub enum EventType {
         Keyboard(u8),
@@ -462,15 +467,57 @@ pub mod macros {
         Mouse(MouseButton),
     }
 
+    impl EventType {
+        fn from_str_params(type_: &str, arg: &str) -> anyhow::Result<Self> {
+            match type_ {
+                "keyboard" => Ok(Self::Keyboard(u8::from_str(arg)?)),
+                "modifier" => Ok(Self::Modifier(Modifier::from_str(arg)?)),
+                "mouse" => Ok(Self::Mouse(MouseButton::from_str(arg)?)),
+                _ => Err(anyhow!("Unknown event type '{}'", type_)),
+            }
+        }
+    }
+
+    #[derive(Debug, Copy, Clone)]
     pub enum State {
         Up,
         Down,
     }
 
+    impl FromStr for State {
+        type Err = anyhow::Error;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            match s {
+                "up" | "release" => Ok(Self::Up),
+                "down" | "press" => Ok(Self::Down),
+                _ => Err(anyhow!("Invalid state '{}'", s)),
+            }
+        }
+    }
+
+    #[derive(Debug, Copy, Clone)]
     pub struct Event {
         pub state: State,
         pub evtype: EventType,
         pub duration: u16,
+    }
+
+    impl FromStr for Event {
+        type Err = anyhow::Error;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            let split: Vec<&str> = s.split(':').collect();
+            if split.len() != 4 {
+                Err(anyhow!("Incorrect number of parameters ({})", split.len()))
+            } else {
+                Ok(Self {
+                    state: State::from_str(split[0])?,
+                    evtype: EventType::from_str_params(split[1], split[2])?,
+                    duration: u16::from_str(split[3])?,
+                })
+            }
+        }
     }
 
     pub struct Macro {
@@ -544,11 +591,13 @@ impl GloriousDevice {
             .map_err(|_| anyhow::Error::msg("Failed to parse button map"))
     }
 
-    fn send_data(&mut self, _cmd: u8, magic3: u8, data: &DataReport) -> Result<()> {
+    fn send_data(&mut self, magic3: Option<u8>, data: &DataReport) -> Result<()> {
         // let req = [HW_REPORT_MSG, cmd, 0, 0, 0, 0];
         // self.hiddev.send_feature_report(&req)?;
         let mut datacpy = data.to_owned();
-        datacpy[3] = magic3;
+        if let Some(m) = magic3 {
+            datacpy[3] = m;
+        }
         self.hiddev.send_feature_report(&datacpy)?;
         // The mouse sometimes gets confused when reading the config right after
         // writing it. Wait a bit just in case. 10ms seems to be probably enough,
@@ -558,11 +607,11 @@ impl GloriousDevice {
     }
 
     pub fn send_config_raw(&mut self, data: &DataReport) -> Result<()> {
-        self.send_data(HW_CMD_CONF, HW_CONF_WRITE_MAGIC, data)
+        self.send_data(Some(HW_CONF_WRITE_MAGIC), data)
     }
 
     pub fn send_buttonmap_raw(&mut self, data: &DataReport) -> Result<()> {
-        self.send_data(HW_CMD_MAP, HW_MAP_WRITE_MAGIC, data)
+        self.send_data(Some(HW_MAP_WRITE_MAGIC), data)
     }
 
     pub fn send_config(&mut self, conf: &Config) -> Result<()> {
@@ -573,5 +622,10 @@ impl GloriousDevice {
     pub fn send_buttonmap(&mut self, map: &ButtonMapping) -> Result<()> {
         let x = encode::buttonmap(&map);
         self.send_config_raw(&x)
+    }
+
+    pub fn send_macro_bank(&mut self, bank: u8, events: &[Event]) -> Result<()> {
+        let x = encode::macro_bank(bank, events)?;
+        self.send_data(None, &x)
     }
 }

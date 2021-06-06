@@ -3,6 +3,8 @@ use crate::device::{
     buttonmap::{ButtonAction, DpiSwitch, MacroMode},
     rgb, ButtonMapping, Color, Config, DataReport, DpiValue,
 };
+use anyhow::anyhow;
+use std::convert::TryInto;
 
 struct ByteBuffer {
     buf: Vec<u8>,
@@ -248,4 +250,21 @@ impl macros::Event {
         b1 |= duration_bytes[0] & 0xf;
         out.put_bytes(&[b1, duration_bytes[1], keycode]);
     }
+}
+
+pub fn macro_bank(bank: u8, events: &[macros::Event]) -> anyhow::Result<DataReport> {
+    if events.len() > 168 {
+        return Err(anyhow!("The maximum number of events is 168"));
+    }
+
+    let mut buf = ByteBuffer::with_capacity(520);
+
+    buf.put_bytes(&[0x04, 0x30, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    buf.put_bytes(&[bank, 0x00, events.len().try_into()?]);
+
+    for ev in events {
+        ev.put(&mut buf);
+    }
+
+    Ok(buf.to_raw_config())
 }
