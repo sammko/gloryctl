@@ -3,8 +3,8 @@
 
 This project is an implementation of the vendor-specific HID protocol in use
 by [Glorious](https://www.pcgamingrace.com) mice used to configure parameters
-such as DPI profiles, LED effects and macros. Not all features are yet
-reverse-engineered and implemented.
+such as DPI profiles, LED effects and macros. Most features are implemented at
+this point.
 
 ## Motivation
 
@@ -55,11 +55,13 @@ application) sends an identifier to the mouse via report 5. The first octet in
 the buffer denotes the report ID itself (5 in this case) and the second octet
 is the selected command ID.
 
-The firmware remembers the selected command and processes further communication
-accordingly. As of now, two commands are reverse-engineered and implemented:
+The firmware remembers the selected command and processes further read requests
+accordingly. As of now, the following commands are known:
 
-    HW_CMD_VER = 1
-    HW_CMD_CONF = 17
+    HW_CMD_VER  = 0x01
+    HW_CMD_CONF = 0x11
+    HW_CMD_MAP  = 0x12
+    HW_CMD_DEBOUNCE = 0x1a
 
 ### `HW_CMD_VER`
 
@@ -78,8 +80,12 @@ It is read-only and re-uses report ID 5. So the entire communication is as follo
 This is the main configuration command. It uses the big (519 octet) report, but
 not in its entirety, only the first 131 octets are in use. So again, the host
 selects a command using report 5: `send_feature_report([5, 17, 0, 0, 0, 0])`
-and then either reads report 4 or writes it. A buffer similar to this might be
-returned by the mouse.
+and then either reads report 4 or writes it. (In reality, when writing, sending
+the short feature report is not necessary, as the firmware can figure out where
+the write is supposed to go based on the contents of the buffer. It is obviously needed
+for reading though.)
+
+A buffer similar to this might be returned by the mouse.
 
 	04 11 00 00 00 00 06 00 64 06 04 23 f2 04 05 05 
 	05 06 06 07 07 00 00 00 00 00 00 00 00 c0 00 c0 
@@ -216,29 +222,101 @@ unknown ways (it mostly doesn't work, that is) depending on the length of the
 sent buffer. The official software sends the entire 520 thing padded with
 zeroes.
 
-### Other commands
+### `HW_CMD_MAP`
 
-The mouse supports several other commands, which is why the report is so large
-in the first place, to accommodate the relatively large amount of data required
-for programmable macros. Aside from those, the buttons on the mouse can also be
-remapped, which has its own command as well. I have not reverse-engineered
-those yet and are not supported by the implementation.
+This is used to configure the button mapping -- what each physical button on the
+mouse actually does. The default configuration is as follows:
+
+    Button 1 - Left click
+    Button 2 - Right click
+    Button 3 - Middle click
+    Button 4 - Back
+    Button 5 - Forward
+    Button 6 - DPI cycle
+
+Each of these buttons can be reconfigured arbitrarily, the possibilities are
+somewhat apparent from the enum I use to represent them:
+
+    pub enum ButtonAction {
+        MouseButton(MouseButton),
+        Scroll(i8),
+        RepeatButton {
+            which: MouseButton,
+            interval: u8,
+            count: u8,
+        },
+        DpiSwitch(DpiSwitch),
+        DpiLock(u16),
+        MediaButton(MediaButton),
+        KeyboardShortcut {
+            modifiers: Modifier,
+            key: u8,
+        },
+        Disabled,
+        Macro(u8, MacroMode),
+    }
+
+Interestingly, the MouseButton and MediaButton types are bitflags, meaning that
+multiple actions of the same kind can be performed simultaneously by the device,
+for example a button can be configured to press left and middle click at the
+same time. The binary representation of this is relatively straightforward,
+and details can quickly be gleaned from the implementation of the encoder.
+
+In summary, the report consists of a constant header, followed by several
+repetitions of a structure 4 bytes in size. Each instance represents the
+mapping for one button. The official software sends a buffer containing
+mapping for 20 buttons, but the mouse only has 6 buttons and only uses
+the first 6 entries. The first byte of each entry roughly corresponds to
+the variants of the enum above. The remaining three bytes encode the
+corresponding data.
+
+Unfortunately, I have not found a way to retrieve the current configuration off
+the mouse, trying to read the buffer in a manner similar to `HW_CMD_CONF` does work,
+but returns the default configuration. I have once seen the mouse switch to
+a different mode somehow by the official software, where it would ignore
+writes to the `HW_CMD_CONF` buffer (no changes in RGB for example) and would
+return the actual value of `HW_CMD_MAP` instead of the default mapping.
+I have not found out how the official software does it or why.
+
+### `HW_CMD_DEBOUNCE`
+
+This is a simple command to change the debounce timing of the mouse.
+It uses only the short report. For example a write of `[5, 0x1a, D, 0, 0, 0]`,
+would configure the debounce time to `2*D ms`. Setting D to 0 and reading
+the same report yields the currently configured value.
+
+### Programmable Macros
+
+The mouse has support for macros. Each button can be configured to execute a
+macro with a given number (either once, multiple times, or repeating).
+
+A macro is a sequence of (up to 168) events, where each event contains a state
+(Up or Down, whether the key is pressed or released), a delay value
+in milliseconds and each event contains the key it is describing.
+A key is either a mouse button, a modifier (ctrl, etc.)
+or a normal button on the keyboard (described by the USB HID usage number).
+
+Each event is represented by a 3 byte structure. The details can be gleaned
+quite easily from the implementation of the encoder.
+
+The mouse has memory for several independent macro banks. How many? Trying to
+find out by writing to them led to a bricked mouse (probably the firmware code
+does not check bounds and ended up overwriting some important data).
+They are numbered and can be written using the big report with a header
+of `[4, 0x30, 0x02, 0, 0, 0, 0, 0, bank_number, 0, event_count]`. The same
+`bank_number` is used as an identifier when configuring the button map.
+
+To my knowledge, the macros cannot be read from the mouse.
 
 ## The Program
 
-The program currently has no real user-interface, right now it is more of a
-library for communicating with the mouse. The `src/main.rs` file contains a
-simple program to call the library and dump the firmware version and parsed
-`Config` structure. The `Config` can then be modified and sent back to the
-mouse using the library, which again encodes it into the byte array the mouse
-expects.
+`gloryctl` has a simple command line interface to configure features of the
+mouse. Use `gloryctl --help` to see usage information.
 
 It should run fine on both Linux and Windows based operating systems thanks to
 cross-platform support of the hidapi library, which is used for low-level
 communication with the device. macOS should work as well in theory, but I have
 not yet tested this claim.
-
-The file `src/main_cli.rs` contains the beginnings of a CLI implementation.
 
 `src/device.rs` contains definitions for some hardware constants, definitions
 for structures used by the library and code for sending commands to the mouse.

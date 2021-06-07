@@ -15,11 +15,16 @@ pub struct Opts {
 
 #[derive(Clap)]
 enum Command {
+    /// Dump the firmware version and Config
     Dump(Dump),
+    /// Configure the button mapping
     Button(Buttons),
+    /// Configure DPI profiles
     Dpi(Dpi),
+    /// Configure macros
     Macro(Macro),
     /// Configure the RGB effect
+    // This is weird due to https://github.com/clap-rs/clap/issues/2005
     Rgb {
         #[clap(subcommand)]
         rgbcmd: Rgb,
@@ -30,8 +35,30 @@ enum Command {
 struct Dump {}
 
 #[derive(Clap)]
+#[clap(after_help = r"DISCUSSION:
+    The format of a mapping is button:action-type[:action-params...]
+    where button is a number from 1 to 6 and action-type:action-params]
+    is one of the following:
+
+    - disable
+    - mouse:button (button is one of 'left', 'right', 'middle', 'back', 'forward')
+    - scroll:amount (amount can also be 'up' and 'down', corresponding to 1 and -1)
+    - repeat:button:count[:interval=50] (button is same as 'mouse', )
+    - dpi:direction, direction is one of 'loop', 'up', 'down'
+    - dpi-lock:value
+    - media:key
+    - macro:bank
+    - keyboard:modifiers:key
+
+    The provided mappings are always applied over the default configuration,
+    not the current one. If no mappings are provided, the default configuration
+    is used.
+
+    The default configuration can be represented as:
+
+    1:mouse:left 2:mouse:right 3:mouse:middle 4:mouse:back 5:mouse:forward 6:dpi:loop")]
 struct Buttons {
-    list: Vec<SingleButton>,
+    mappings: Vec<SingleButton>,
 }
 
 struct SingleButton {
@@ -53,6 +80,15 @@ impl FromStr for SingleButton {
 }
 
 #[derive(Clap)]
+#[clap(after_help = r"DISCUSSION:
+    The mouse has support for 8 dpi profiles, of which each has a
+    configured dpi value and a color (which is displayed on the LED
+    on the bottom of the mouse. For example, to change the color
+    of dpi profile number 3, you could use
+
+        gloryctl dpi -c 00ffff 3
+
+    At this point, it is not possible to enable or disable profiles.")] // TODO
 struct Dpi {
     #[clap(possible_values = &["1", "2", "3", "4", "5", "6", "7", "8"])]
     which: usize,
@@ -66,6 +102,15 @@ struct Dpi {
 }
 
 #[derive(Clap)]
+#[clap(after_help = r"DISCUSSION:
+    This subcommand can be used to program macros. The first argument
+    is the bank number. Following is a list of events. Each event has
+    a format of state:type:key:duration.
+
+    - state is either 'up' or 'down'
+    - type is one of 'keyboard', 'modifier', 'mouse'
+    - key takes on values depending on type, similar to button mappings
+    - duration is in milliseconds, how long to pause before continuing")]
 struct Macro {
     bank: u8,
 
@@ -103,6 +148,7 @@ enum Rgb {
         #[clap(long, short)]
         colors: Vec<Color>,
     },
+    ///
     Tail {
         #[clap(arg_enum, long, short)]
         brightness: Option<Brightness>,
@@ -110,14 +156,17 @@ enum Rgb {
         #[clap(arg_enum, long, short)]
         speed: Option<Speed>,
     },
+    /// Cycle through colors seamlessly
     SeamlessBreathing {
         #[clap(arg_enum, long, short)]
         speed: Option<Speed>,
     },
+    /// Constant color for each of the six LEDs
     ConstantRgb {
         #[clap(long, short, number_of_values = 6)]
         colors: Vec<Color>,
     },
+    /// Switching between two configured colors
     Rave {
         #[clap(arg_enum, long, short)]
         brightness: Option<Brightness>,
@@ -128,6 +177,7 @@ enum Rgb {
         #[clap(long, short, number_of_values = 2)]
         colors: Vec<Color>,
     },
+    /// Randomly changing colors
     Random {
         #[clap(arg_enum, long, short)]
         speed: Option<Speed>,
@@ -139,6 +189,7 @@ enum Rgb {
         #[clap(arg_enum, long, short)]
         speed: Option<Speed>,
     },
+    /// Single color breathing
     SingleBreathing {
         #[clap(arg_enum, long, short)]
         speed: Option<Speed>,
@@ -213,7 +264,7 @@ impl Dump {
 impl Buttons {
     fn run(&self, dev: &mut GloriousDevice) -> Result<()> {
         let mut map = gloryctl::DEFAULT_MAP;
-        for b in &self.list {
+        for b in &self.mappings {
             if b.which < 1 || b.which > 6 {
                 return Err(anyhow!("Invalid button number {}", b.which));
             }
@@ -247,6 +298,12 @@ impl Dpi {
 
 impl Macro {
     fn run(&self, dev: &mut GloriousDevice) -> Result<()> {
+        if self.bank > 3 {
+            return Err(anyhow!(
+                r"Only 2 macro banks are supported for now,
+                TODO find out how many the hardware supports without bricking it"
+            ));
+        }
         dev.send_macro_bank(self.bank, &self.events)
     }
 }

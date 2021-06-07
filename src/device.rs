@@ -438,7 +438,7 @@ pub mod buttonmap {
                     let parts: Vec<&str> = data.split(':').collect();
                     if parts.len() != 2 {
                         Err(anyhow!(
-                            "Action 'repeat' takes 2 parameters separated by colons (modifiers:key)"
+                            "Action 'keyboard' takes 2 parameters separated by colons (modifiers:key)"
                         ))
                     } else {
                         Ok(Self::KeyboardShortcut {
